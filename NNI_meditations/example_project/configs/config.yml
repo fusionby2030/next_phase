@@ -1,0 +1,14 @@
+authorName: fusionby2030
+experimentName: non_arch_search
+trialConcurrency: 2
+maxExecDuration: 5h
+maxTrialNum: 5000
+trainingServicePlatform: local
+searchSpacePath: search_space_arch.json
+useAnnotation: false
+tuner:
+        builtinTunerName: Random
+trial:
+        command: python3 training.py
+        codeDir: ..
+        gpuNum: 0

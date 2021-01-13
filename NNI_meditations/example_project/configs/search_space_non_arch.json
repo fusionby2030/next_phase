@@ -1,0 +1,7 @@
+{
+    "act_func": {"_type": "choice", "_value": ["ReLU", "LeakyReLU", "Sigmoid", "Tanh", "Softplus"]},
+    "optimizer": {"_type": "choice", "_value": ["SGD", "Adam", "RMSprop"]},
+    "loss": {"_type":  "choice", "_value":  ["SmoothL1Loss", "MSELoss"]},
+    "learning_rate": {"_type": "quniform", "_value": [0.005,  0.025, 0.005]},
+	"batch_size":  {"_type": "choice", "_value":[25, 40, 50, 60, 75, 200]}
+}
