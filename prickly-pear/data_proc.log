@@ -1,0 +1,8 @@
+2021-01-22 10:41:51,607 - INFO - Converted data from data/daten-comma.txt to a pandas dataframe, moving on to cleaning
+2021-01-22 10:41:51,757 - INFO - NumExpr defaulting to 4 threads.
+2021-01-22 10:41:51,791 - INFO - Cleaned data, i.e., removed all na rows, moving on to normailizing
+2021-01-22 10:41:51,817 - INFO - Normailized TArgets.
+2021-01-22 10:41:51,828 - INFO - Normailized Inputs.
+2021-01-22 10:41:51,849 - INFO - Split dataset into training and validation
+2021-01-22 10:42:00,367 - INFO - Model Saving........
+2021-01-22 10:42:00,374 - INFO - Model Saved! 
