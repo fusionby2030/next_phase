@@ -1,0 +1,12 @@
+target_params:
+  height: ['Tepedheight(keV)', 'nepedheight1019(m3)', 'pepedheight(kPa)']
+  density: ['nepedheight1019(m3)']
+input_params:
+  version_4: [ 'Zeff','Ip(MA)', 'B(T)', 'R(m)', 'a(m)', 'averagetriangularity','P_TOTPNBIPohmPICRHPshi(MW)', 'plasmavolume(m3)', 'q95', 'gasflowrateofmainspecies1022(es)', 'divertorconfiguration', 'shot']
+  main_and_global_confinement: ['BetaN(MHD)', 'Ip(MA)', 'B(T)', 'R(m)', 'a(m)', 'averagetriangularity','P_TOTPNBIPohmPICRHPshi(MW)']
+  density_scaling: ['Ip(MA)', 'B(T)', 'P_NBI(MW)', 'averagetriangularity', 'gasflowrateofmainspecies1022(es)']
+
+file_loc: 'data/filtered_daten_comma.csv'
+
+experiment: {'target': 'density', 'input': 'density_scaling', save_model: , load_model: './models/saved_models/TRIAL1' , name: 'Trial_Save'}
+epochs: 10

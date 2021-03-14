@@ -2,3 +2,6 @@ prickly-pear/data/andreas-data.dat
 prickly-pear/data/daten-comma.txt
 mlenv/
 .idea/
+Latex_Sache/
+Workflow_Example/data/__pycache__/
+Workflow_Example/models/__pycache__/
