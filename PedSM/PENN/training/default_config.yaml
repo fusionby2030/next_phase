@@ -1,0 +1,27 @@
+target_params: ['nepedheight1019(m3)']
+control_params: ['shot', 'Ip(MA)', 'P_TOTPNBIPohmPICRHPshi(MW)', 'averagetriangularity', 'gasflowrateofmainspecies1022(es)', 'Meff', 'B(T)','divertorconfiguration']
+data_loc: 'PedSM/PENN/training/filtered_daten_comma.csv'
+test_set_size: 0.3
+synth_data: 0
+num_synth: 85
+epochs: 200
+hyperparameters: {
+  'hidden_size_1': 69,
+  'hidden_size_2': 37,
+  'hidden_size_3': 31,
+  'hidden_size_4': 18,
+  'act_func': 'ELU',
+  'learning_rate': 0.0155,
+  'optimizer': 'Adam',
+  'loss': 'MSELoss',
+  'batch_size': 401,
+  'batch_norm': 1,
+  'hidden_layer_sizes': [84, 66, 54, 41],
+  'cross_layers': 4,
+
+}
+save_model_path: checkpoint.pt
+scheduler: 1
+scheduler_milestones: [50, 65, 90]
+nn_type: 'PedDeepCross'
+experiment: {'target': 'density', 'input': 'density_scaling_Lorenzo', save_model: , load_model: , name: 'Trial_1'}

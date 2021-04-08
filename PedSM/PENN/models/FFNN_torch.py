@@ -144,6 +144,8 @@ class SimpleNet2(torch.nn.Module):
 
         self.out = torch.nn.Linear(last_layer_size, target_size)
 
+
+
     def forward(self, x):
         if self.bn1 is not None:
             x = self.bn1(x)
@@ -231,56 +233,55 @@ class Simple_Cross2(torch.nn.Module):
         return block
 
 
-class Complex_Cross1(torch.nn.Module):
+class PedDeepCross(torch.nn.Module):
     def __init__(self, config, params):
-        super(Complex_Cross1, self).__init__()
+        super(PedDeepCross, self).__init__()
 
         target_size = config['target_size']
         input_size = config['input_size']
         act_func = map_act_func(params['act_func'])
 
-        self.hidden_size_1 = params['hidden_size_1']
-        self.hidden_size_2 = params['hidden_size_2']
-        self.hidden_size_3 = params['hidden_size_3']
-        self.hidden_size_4 = params['hidden_size_4']
-        last_layer_size = self.hidden_size_4
+        self.cross_layers = []
 
-        self.fc1 = self._fc_block(input_size, self.hidden_size_1, act_func)
+        try:
+            for _ in range(params['cross_layers']):
+                self.cross_layers.append(Cross(input_size))
+        except KeyError as exc:
+            Warning('Number of cross layers not specified, using 4')
+            for _ in range(4):
+                self.cross_layers.append(Cross(input_size))
+
+        self.out_cross = torch.nn.Linear(input_size, target_size, act_func)
+
+        self.hidden_layers = []
+        last_size = input_size
+
+        for size in params['hidden_layer_sizes']:
+            self.hidden_layers.append(self._fc_block(last_size, size, act_func))
+            last_size = size
+
+        self.out_dense = torch.nn.Linear(last_size, target_size)
+
         if params['batch_norm'] == 1:
             self.bn1 = torch.nn.BatchNorm1d(input_size)
-            self.bn2 = torch.nn.BatchNorm1d(input_size)
         else:
-            self.bn1 = self.bn2 = None
-        self.fc2 = self._fc_block(self.hidden_size_1, self.hidden_size_2, act_func)
-        self.fc3 = self._fc_block(self.hidden_size_2, self.hidden_size_3, act_func)
-        self.fc4 = self._fc_block(self.hidden_size_3, self.hidden_size_4, act_func)
+            self.bn1 = None
 
-        self.out = self._fc_block(last_layer_size, target_size, act_func)
-        self.c1 = Cross(input_size)
-        self.c2 = Cross(input_size)
-        self.c3 = Cross(input_size)
-        self.fc5 = self._fc_block(input_size, target_size, act_func)
-        self.out = self._fc_block(self.hidden_size_4, target_size, act_func)
-
-        # self.final = self._fc_block(2, target_size, torch.nn.ELU(alpha=params['alpha']))
-        self.final = torch.nn.Linear(2, target_size)
+        self.final = torch.nn.Linear(target_size*2, target_size)
 
     def forward(self, x):
-        x2 = x
-        if self.bn2 is not None:
-            x = self.bn2(x)
-        x = self.c1(x, x)
-        x = self.c2(x, x)
-        x = self.fc5(x)
-
         if self.bn1 is not None:
-            x2 = self.bn1(x2)
-        x2 = self.fc1(x2)
+            x = self.bn1(x)
+        x2 = x
+        for cross_layer in self.cross_layers:
+            x = cross_layer(x, x)
 
-        x2 = self.fc2(x2)
-        x2 = self.fc3(x2)
-        x2 = self.fc4(x2)
-        x2 = self.out(x2)
+        x = self.out_cross(x)
+
+        for layer in self.hidden_layers:
+            x2 = layer(x2)
+        x2 = self.out_dense(x2)
+
         out = torch.cat((x, x2), 1)
         out = self.final(out)
 

@@ -1,33 +1,44 @@
 import time
 import math
+
 try:
     from PedSM.PENN.training.data_loading import prepare_dataset_torch
-    from PedSM.PENN.models.FFNN import SimpleNet, SimpleNet2, Complex_Cross1, Simple_Cross2
-    from PedSM.PENN.models.torch_utils import map_optimizer, map_loss_func, generate_default_params
-    from PedSM.PENN.training.diagnostics import plot_results, plot_loss
+    from PedSM.PENN.models.FFNN_torch import SimpleNet, SimpleNet2, PedDeepCross, Simple_Cross2
+    from PedSM.PENN.models.torch_utils import map_optimizer, map_loss_func, generate_default_params, map_model, \
+        EarlyStopping
+    from PedSM.PENN.training.diagnostics import plot_results, plot_against_scaling
+    from PedSM.PENN.training.training_torch import train_epoch, train
 except Exception as exc:
     from ....PedSM.PENN.training.data_loading import prepare_dataset_torch
-    from ....PedSM.PENN.models.FFNN import SimpleNet, SimpleNet2, Complex_Cross1
+    from ....PedSM.PENN.models.FFNN_torch import SimpleNet, SimpleNet2, PedDeepCross
     from ....PedSM.PENN.models.torch_utils import map_optimizer, map_loss_func, generate_default_params
-    from ....PedSM.PENN.training.diagnostics import plot_results, plot_loss
+    from ....PedSM.PENN.training.diagnostics import plot_results
 import torch
 
 import nni
 import logging
 
-root_logger = logging.getLogger('pedsm')
+root_logger = logging.getLogger('pedsm_search')
 logger = root_logger
 logger.setLevel(logging.INFO)
 
 
-def train(config, params=None, warm_start_NN=None, restore_old_checkpoint=False, workers=1, verbosity=0):
+def train_search(config, params=None, warm_start_NN=None, restore_old_checkpoint=False, workers=1, verbosity=0):
+    """
+    train_search is practically the same as the train function from training_torch, just made for NNI experiments
+
+    :param config:
+    :param params:
+    :param warm_start_NN:
+    :param restore_old_checkpoint:
+    :param workers:
+    :param verbosity:
+    :return:
+    """
     if verbosity == 0:
         logger.setLevel(logging.INFO)
     if verbosity >= 1:
         logger.setLevel(logging.DEBUG)
-
-    if params is None:
-        params = generate_default_params()
     start = time.time()
 
     logger.info('Preparing Datasets')
@@ -38,76 +49,63 @@ def train(config, params=None, warm_start_NN=None, restore_old_checkpoint=False,
 
     logger.info('Initializing Torch Network')
 
-    if config.get('nn_type') == 'SimpleNet':
-        net = SimpleNet2(config, params)
-    elif config.get('nn_type') == 'ComplexCross':
-        net = Complex_Cross1(config, params)
-    elif config.get('nn_type') == 'SimpleCross':
-        net = Simple_Cross2(config, params)
+    net = map_model(config, params)
 
     logger.info('Optimizer Initialize')
     optimizer = map_optimizer(params['optimizer'], net.parameters(), params['learning_rate'])
     loss_func = map_loss_func(params['loss'])
-
-    logger.info('Start Training!')
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[110, 170, 225], gamma=0.1)
-    epochs = config['epochs']
     criterion = torch.nn.MSELoss()
 
-    last_results = []
-    metrics = {}
-    losses = []
+    if config['scheduler']:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=config['scheduler_milestones'],
+                                                         gamma=0.1)
+    else:
+        scheduler = None
+
+    epochs = config['epochs']
+
+    # Track the losses to determine early stopping
+    avg_train_loss = []
+    avg_valid_loss = []
+
+    # initalize the early_stopping object
+    early_stopping = EarlyStopping(verbose=True, trace_func=logger.info)
+
+    logger.info('Start Training!')
     for epoch in range(epochs):
 
-        # TRAINING
-        net.train()
-        max_error = 0.0
+        train_loss, validation_loss, RMSE = train_epoch(net, optimizer, loss_func, train_loader=train_loader,
+                                                        test_loader=test_loader, scheduler=scheduler,
+                                                        criterion=criterion)
 
-        for i, batch in enumerate(train_loader):
-            optimizer.zero_grad()
-            inputs, targets = batch['input'], batch['target']
-            output = net(inputs)
-            loss = loss_func(output, targets)
-            loss.backward()
-            optimizer.step()
-            max_error = max(max_error, loss.detach().numpy())
+        nni.report_intermediate_result(-math.log10(RMSE))
+        if early_stopping is not None:
+            early_stopping(validation_loss, net, RMSE)
+            RMSE = early_stopping.RMSE
 
-        scheduler.step()
-        losses.append(max_error)
+        avg_train_loss.append(train_loss)
+        avg_valid_loss.append(validation_loss)
 
-        # Validation
+        logger.info(
+            'Epoch {}; Train Loss: {:.5}; Valid Loss: {:.5}; Best Validation RMSE: {:.5}'.format(epoch, train_loss,
+                                                                                                 validation_loss,
+                                                                                                 RMSE))
+        print('Epoch {}; Train Loss: {:.5}; Valid Loss: {:.5}; Validation RMSE: {:.5}'.format(epoch, train_loss,
+                                                                                              validation_loss, RMSE))
+        if early_stopping.early_stop:
+            logger.info('Early Stopping')
+            RMSE = early_stopping.RMSE
+            break
 
-        net.eval()
-        max_error = 0.0
-
-        for i, batch in enumerate(test_loader):
-            inputs, targets = batch['input'], batch['target']
-            output = net(inputs)
-            # MSE = torch.sum((output - targets) ** 2) / (len(output) * params['batch_size'])
-            MSE = criterion(output, targets)
-            MSE = torch.sqrt(MSE)
-
-            max_error = max(MSE, max_error)
-            score = -math.log10(max_error)
-
-        nni.report_intermediate_result(score)
-        logger.info('Epoch {}; Validation RMSE: {}'.format(epoch, max_error))
-
-        if epoch > epochs - 5:
-            last_results.append(score)
-
-    final_score = min(last_results)
-    metrics['default'] = final_score
-    print(params)
-
-    plot_results(net, validation_dataset, criterion, str(nni.get_trial_id()), str(nni.get_experiment_id()))
-    # plot_loss(losses, str(nni.get_trial_id()), str(nni.get_experiment_id()))
-    # validation_dataset.plot_histograms()
-    nni.report_final_result(metrics)
+    nni.report_final_result(-math.log10(RMSE))
+    end = time.time()
+    logger.info('Training Completed: Time elapsed: {:.2} Seconds'.format(end - start))
+    plot_against_scaling(net, validation_dataset, criterion, trial_id=str(nni.get_trial_id()),
+                 exp_id=str(nni.get_experiment_id()))
 
 
 def main(config, restore_old_checkpoint=False, **kwargs):
-    train(config, warm_start_NN=None, restore_old_checkpoint=restore_old_checkpoint, **kwargs)
+    train_search(config, warm_start_NN=None, restore_old_checkpoint=restore_old_checkpoint, **kwargs)
 
 
 if __name__ == '__main__':
@@ -115,14 +113,16 @@ if __name__ == '__main__':
     import yaml
 
     parser = argparse.ArgumentParser(description='Launch PENN training')
-    parser.add_argument('--config', default='PedSM/PENN/training/default_config.yaml', help='Configuration File Loc')
+    parser.add_argument('--config', default='PedSM/PENN/training/default_config.yaml', help='Configuration File Location')
+    # TODO: these parsers below should do something but at the moment they don't
     parser.add_argument('--load-checkpoint', default=False, help='Start from a saved checkpoint')
+
     parser.add_argument('--verbose', '-v', action='count', default=0)
 
     args = parser.parse_args()
 
     config = yaml.safe_load(open(args.config))
-    # main(config=config, restore_old_checkpoint=args.load_checkpoint, verbosity=args.verbose)
+
     try:
         torch.manual_seed(42)  # Always set this as we want to reproduce values
         updated_params = nni.get_next_parameter()
@@ -130,4 +130,6 @@ if __name__ == '__main__':
         params.update(updated_params)
         main(config=config, restore_old_checkpoint=args.load_checkpoint, verbosity=args.verbose, params=params)
     except Exception as exc:
+        logging.debug('Failed to Complete Search')
+        logging.debug(exc)
         raise
